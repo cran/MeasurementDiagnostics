@@ -32,7 +32,8 @@ tableMeasurementValueAsNumeric <- function(result,
 
   # subset to rows of interest
   result <- result |>
-    omopgenerics::filterSettings(.data$result_type == "measurement_value_as_numeric")
+    omopgenerics::filterSettings(.data$result_type == "measurement_value_as_numeric") |>
+    dplyr::filter(!grepl("density", .data$estimate_name))
 
   if (nrow(result) == 0) {
     cli::cli_warn("There are no results with `result_type = measurement_value_as_numeric`")
@@ -70,6 +71,8 @@ tableMeasurementValueAsNumeric <- function(result,
       estimateName = c(
         "N" = "<count>",
         "Median [Q25 - Q75]" = "<median> [<q25> - <q75>]",
+        "Q05 - Q95" = "<q05> - <q95>",
+        "Q01 - Q99" = "<q01> -  <q99>",
         "Range" = "<min> to <max>",
         "Missing value, N (%)" = "<count_missing> (<percentage_missing>%)"
       ),

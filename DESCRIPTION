@@ -1,7 +1,7 @@
 Package: MeasurementDiagnostics
 Type: Package
 Title: Diagnostics for Lists of Codes Based on Measurements
-Version: 0.0.1
+Version: 0.1.0
 Authors@R: c(
     person("Edward", "Burn", , "edward.burn@ndorms.ox.ac.uk", 
     role = c("aut"), comment = c(ORCID = "0000-0002-9286-1128")),
@@ -21,9 +21,10 @@ Depends: R (>= 4.1)
 License: Apache License (>= 2)
 Encoding: UTF-8
 RoxygenNote: 7.3.2
+URL: https://ohdsi.github.io/MeasurementDiagnostics/
 VignetteBuilder: knitr
 NeedsCompilation: no
-Packaged: 2025-07-08 15:29:30 UTC; nuriamb
+Packaged: 2025-07-29 11:28:32 UTC; nmercade
 Author: Edward Burn [aut] (ORCID: <https://orcid.org/0000-0002-9286-1128>),
   Nuria Mercade-Besora [aut, cre] (ORCID:
     <https://orcid.org/0009-0006-7948-3747>),
@@ -31,4 +32,4 @@ Author: Edward Burn [aut] (ORCID: <https://orcid.org/0000-0002-9286-1128>),
     <https://orcid.org/0009-0002-4405-1814>)
 Maintainer: Nuria Mercade-Besora <nuria.mercadebesora@ndorms.ox.ac.uk>
 Repository: CRAN
-Date/Publication: 2025-07-11 13:00:05 UTC
+Date/Publication: 2025-07-29 11:50:02 UTC

@@ -10,6 +10,8 @@
 \item{y}{Columns to use as horizontal axes. See options with
 `visOmopResults::plotColumns(result)`.}
 
+\item{plotType}{Type of plot, either "boxplot" or "densityplot".}
+
 \item{facet}{Columns to facet by. See options with
 `visOmopResults::plotColumns(result)`. Formula input is also allowed to
 specify rows and columns.}
