@@ -2,35 +2,36 @@ test_that("summariseCohortMeasurementUse works", {
   skip_on_cran()
   cdm <- testMockCdm()
   cdm <- copyCdm(cdm)
+
   res <- summariseCohortMeasurementUse(codes = list("test" = 3001467L), cohort = cdm$my_cohort, timing = "any")
   expect_equal(
     omopgenerics::settings(res),
     dplyr::tibble(
       result_id = 1:3L,
-      result_type = c("measurement_timings", "measurement_value_as_numeric", "measurement_value_as_concept"),
+      result_type = c("measurement_summary", "measurement_value_as_number", "measurement_value_as_concept"),
       package_name = "MeasurementDiagnostics",
       package_version = as.character(utils::packageVersion("MeasurementDiagnostics")),
-      group = c("cohort_name &&& codelist_name", "cohort_name &&& codelist_name &&& concept_name &&& unit_concept_name", "cohort_name &&& codelist_name &&& concept_name"),
+      group = c("cohort_name &&& codelist_name", "cohort_name &&& codelist_name &&& concept_name &&& source_concept_name &&& unit_concept_name", "cohort_name &&& codelist_name &&& concept_name &&& source_concept_name"),
       strata = c(rep("", 3)),
-      additional = c("", "concept_id &&& unit_concept_id &&& domain_id", "concept_id &&& value_as_concept_id &&& domain_id"),
+      additional = c("", "concept_id &&& source_concept_id &&& unit_concept_id &&& domain_id", "concept_id &&& source_concept_id &&& value_as_concept_id &&& domain_id"),
       min_cell_count = "0",
       timing = "any"
     )
   )
   expect_equal(
     res |>
-      omopgenerics::filterSettings(result_type == "measurement_timings") |>
+      omopgenerics::filterSettings(result_type == "measurement_summary") |>
       dplyr::filter(strata_name == "overall", estimate_name != "density_x", estimate_name != "density_y") |>
       dplyr::pull(estimate_value) |>
       sort(),
     as.character(c(
-      '0', '0', '1', '1', '1', '1', '1', '11', '1206', '14', '1506', '1761', '2',
-      '2', '2.25', '20', '2316', '4', '4', '4322.75', '5026', '651', '9', '96'
+      '1', '1', '1', '1', '1', '1', '1', '1093', '11', '1206', '14', '1761', '2',
+      '2', '20', '2316', '3', '3320', '4354', '5026', '651', '9', '96', '96'
       ))
   )
   expect_equal(
     res |>
-      omopgenerics::filterSettings(result_type == "measurement_timings") |>
+      omopgenerics::filterSettings(result_type == "measurement_summary") |>
       dplyr::filter(strata_name == "overall", estimate_name != "density_x", estimate_name != "density_y") |>
       dplyr::pull(variable_name) |>
       sort(),
@@ -38,7 +39,7 @@ test_that("summariseCohortMeasurementUse works", {
   )
   expect_equal(
     res |>
-      omopgenerics::filterSettings(result_type == "measurement_timings") |>
+      omopgenerics::filterSettings(result_type == "measurement_summary") |>
       dplyr::filter(strata_name == "overall", estimate_name != "density_x", estimate_name != "density_y") |>
       dplyr::pull(estimate_name) |>
       sort(),
@@ -46,7 +47,7 @@ test_that("summariseCohortMeasurementUse works", {
   )
   expect_equal(
     res |>
-      omopgenerics::filterSettings(result_type == "measurement_value_as_numeric") |>
+      omopgenerics::filterSettings(result_type == "measurement_value_as_number") |>
       dplyr::filter(strata_name == "overall", estimate_name != "density_x", estimate_name != "density_y") |>
       dplyr::pull(estimate_name)|>
       sort() |>
@@ -56,7 +57,7 @@ test_that("summariseCohortMeasurementUse works", {
   )
   expect_equal(
     res |>
-      omopgenerics::filterSettings(result_type == "measurement_value_as_numeric") |>
+      omopgenerics::filterSettings(result_type == "measurement_value_as_number") |>
       dplyr::filter(strata_name == "overall") |>
       dplyr::pull(estimate_name) |>
       sort() |>
@@ -85,14 +86,74 @@ test_that("summariseCohortMeasurementUse works", {
     'percentage', 'percentage', 'percentage', 'percentage', 'percentage', 'percentage',
     'percentage', 'percentage')
   )
+
+  # use codelist attribute ----
+  cdm$my_cohort <- cdm$my_cohort |>
+    omopgenerics::newCohortTable(
+      cohortCodelistRef = dplyr::tibble(
+        cohort_definition_id = 1:2L,
+        codelist_name = "test",
+        concept_id = 3001467L,
+        codelist_type = "index event"
+      )
+    )
+  resAttribute <- summariseCohortMeasurementUse(cohort = cdm$my_cohort, timing = "any")
+  expect_equal(res |> dplyr::arrange(group_level, estimate_value), resAttribute |> dplyr::arrange(group_level, estimate_value))
+
+  cdm$my_cohort <- cdm$my_cohort |>
+    omopgenerics::newCohortTable(
+      cohortCodelistRef = dplyr::tibble(
+        cohort_definition_id = 1:2L,
+        codelist_name = "test",
+        concept_id = c(3001467L, 45875977L),
+        codelist_type = "index event"
+      )
+    )
+  resAttribute <- summariseCohortMeasurementUse(cohort = cdm$my_cohort, timing = "any")
+  expect_equal(
+    resAttribute$group_level |> unique(),
+    c('cohort_1 &&& test', 'cohort_2 &&& test', 'cohort_1 &&& test &&& kilogram',
+      'cohort_1 &&& test &&& NA',
+      'cohort_1 &&& test &&& Alkaline phosphatase.bone [Enzymatic activity/volume] in Serum or Plasma &&& Alkaline phosphatase.bone &&& kilogram',
+      'cohort_1 &&& test &&& Alkaline phosphatase.bone [Enzymatic activity/volume] in Serum or Plasma &&& Alkaline phosphatase.bone &&& NA',
+      'cohort_1 &&& test &&& Alkaline phosphatase.bone [Enzymatic activity/volume] in Serum or Plasma &&& Alkaline phosphatase.bone')
+  )
+
+  # Histogram ----
+  expect_warning(
+    res <- summariseCohortMeasurementUse(
+      cohort = cdm$my_cohort,
+      codes = list("test" = 3001467L, "test2" = 1L, "test3" = 45875977L),
+      bySex = TRUE,
+      ageGroup = list(c(0, 17), c(18, 64), c(65, 150)),
+      histogram = list(
+        "blahblah" = list("blah" = c(0, Inf)),
+        "time" = list('0 to 100' = c(0, 100), '110 to 200' = c(110, 200), '210 to 300' = c(210, 300), '310 to Inf' = c(310, Inf)),
+        "measurements_per_subject" = list('0 to 10' = c(0, 10), '11 to 20' = c(11, 20), '21 to 30' = c(21, 30), '31 to Inf' = c(31, Inf)),
+        "value_as_number" =  list('0 to 5' = c(0, 5), '6 to 10' = c(6, 10), '11 to 15' = c(11, 15), '>15' = c(16, Inf))
+      )
+    )
+  )
+
+  expect_true(all(
+    res$variable_name |> unique() %in% c(
+      "number records", "number subjects", "time", "measurements_per_subject",
+      "value_as_number", "value_as_concept_name"
+    )
+  ))
+  expect_equal(
+    res |> dplyr::filter(.data$estimate_name == "count", .data$variable_name %in% c("time", "measurements_per_subject", "value_as_number")) |> dplyr::pull(variable_level) |> unique(),
+    c(NA_character_, "0 to 10", ">15" )
+  )
+
+  dropCreatedTables(cdm = cdm)
 })
 
 test_that("test timings with eunomia", {
   skip_on_cran()
-  skip_if(Sys.getenv("EUNOMIA_DATA_FOLDER") == "")
-  # without cohort
-  con <- DBI::dbConnect(duckdb::duckdb(), CDMConnector::eunomiaDir())
-  cdm <- CDMConnector::cdmFromCon(con, cdmName = "eunomia", cdmSchema = "main", writeSchema = "main")
+  cdm <- omock::mockCdmFromDataset(datasetName = "GiBleed", source = "local") |>
+    copyCdm()
+
   cohort <- CohortConstructor::conceptCohort(cdm = cdm, conceptSet = list("condition" = 40481087L), name = "cohort")
   res_any <- summariseCohortMeasurementUse(
     codes = list("bmi" = c(4024958L, 36304833L), "egfr" = c(1619025L, 1619026L, 3029829L, 3006322L)),
@@ -108,17 +169,17 @@ test_that("test timings with eunomia", {
   )
   expect_equal(
     res_any |>
-      omopgenerics::filterSettings(result_type == "measurement_timings") |>
+      omopgenerics::filterSettings(result_type == "measurement_summary") |>
       dplyr::filter(strata_name == "overall", estimate_name != "density_x", estimate_name != "density_y") |>
       dplyr::pull(estimate_value) |>
       sort(),
-    c('1', '1', '1035', '12852', '1487', '15', '2', '2329', '2442', '2656', '3',
-      '31573', '31880', '3493', '38', '39', '4', '4', '4961.5', '5498', '6',
-      '7481', '8', '9')
+    c('1', '1', '1', '1035', '12852', '1487', '15', '2', '2329', '2442', '2656',
+      '3', '3', '31573', '31880', '3493', '38', '39', '4962', '5', '5498', '6',
+      '7481', '9')
   )
   expect_equal(
     res_during |>
-      omopgenerics::filterSettings(result_type == "measurement_timings") |>
+      omopgenerics::filterSettings(result_type == "measurement_summary") |>
       dplyr::filter(strata_name == "overall", estimate_name != "density_x", estimate_name != "density_y") |>
       dplyr::pull(estimate_value) |>
       sort(),
@@ -128,7 +189,7 @@ test_that("test timings with eunomia", {
   )
   expect_equal(
     res_start |>
-      omopgenerics::filterSettings(result_type == "measurement_timings") |>
+      omopgenerics::filterSettings(result_type == "measurement_summary") |>
       dplyr::filter(strata_name == "overall", estimate_name != "density_x", estimate_name != "density_y") |>
       dplyr::pull(estimate_value) |>
       sort(),
@@ -136,7 +197,7 @@ test_that("test timings with eunomia", {
   )
   expect_equal(
     res_any |>
-      omopgenerics::filterSettings(result_type == "measurement_value_as_numeric") |>
+      omopgenerics::filterSettings(result_type == "measurement_value_as_number") |>
       dplyr::filter(
         strata_name == "overall",
         group_name != "cohort_name &&& codelist_name &&& unit_concept_name",
@@ -148,7 +209,7 @@ test_that("test timings with eunomia", {
   )
   expect_equal(
     res_during |>
-      omopgenerics::filterSettings(result_type == "measurement_value_as_numeric") |>
+      omopgenerics::filterSettings(result_type == "measurement_value_as_number") |>
       dplyr::filter(
         strata_name == "overall",
         group_name != "cohort_name &&& codelist_name &&& unit_concept_name",
@@ -160,7 +221,7 @@ test_that("test timings with eunomia", {
   )
   expect_equal(
     res_start |>
-      omopgenerics::filterSettings(result_type == "measurement_value_as_numeric") |>
+      omopgenerics::filterSettings(result_type == "measurement_value_as_number") |>
       dplyr::filter(
         strata_name == "overall",
         group_name != "cohort_name &&& codelist_name &&& unit_concept_name",
@@ -194,12 +255,15 @@ test_that("test timings with eunomia", {
       sort(),
     c("1", "100")
   )
+
+  dropCreatedTables(cdm = cdm)
 })
 
 test_that("summariseCohortMeasurementUse straifications work", {
   skip_on_cran()
   cdm <- testMockCdm()
   cdm <- copyCdm(cdm)
+
   res <- summariseCohortMeasurementUse(
     cohort = cdm$my_cohort,
     codes = list("test" = 3001467L, "test2" = 1L, "test3" = 45875977L),
@@ -222,12 +286,12 @@ test_that("summariseCohortMeasurementUse straifications work", {
     omopgenerics::settings(res),
     dplyr::tibble(
       result_id = 1:3L,
-      result_type = c("measurement_timings", "measurement_value_as_numeric", "measurement_value_as_concept"),
+      result_type = c("measurement_summary", "measurement_value_as_number", "measurement_value_as_concept"),
       package_name = "MeasurementDiagnostics",
       package_version = as.character(utils::packageVersion("MeasurementDiagnostics")),
-      group = c("cohort_name &&& codelist_name", "cohort_name &&& codelist_name &&& concept_name &&& unit_concept_name", "cohort_name &&& codelist_name &&& concept_name"),
+      group = c("cohort_name &&& codelist_name", "cohort_name &&& codelist_name &&& concept_name &&& source_concept_name &&& unit_concept_name", "cohort_name &&& codelist_name &&& concept_name &&& source_concept_name"),
       strata = c(rep("sex &&& year", 3)),
-      additional = c("", "concept_id &&& unit_concept_id &&& domain_id", "concept_id &&& value_as_concept_id &&& domain_id"),
+      additional = c("", "concept_id &&& source_concept_id &&& unit_concept_id &&& domain_id", "concept_id &&& source_concept_id &&& value_as_concept_id &&& domain_id"),
       min_cell_count = "0",
       date_range = "1995-01-01 to 2020-01-01",
       timing = "during"
@@ -246,7 +310,7 @@ test_that("summariseCohortMeasurementUse straifications work", {
     omopgenerics::settings(res),
     dplyr::tibble(
       result_id = 1:3L,
-      result_type = c("measurement_timings", "measurement_value_as_numeric", "measurement_value_as_concept"),
+      result_type = c("measurement_summary", "measurement_value_as_number", "measurement_value_as_concept"),
       package_name = "MeasurementDiagnostics",
       package_version = as.character(utils::packageVersion("MeasurementDiagnostics")),
       group = c("cohort_name &&& codelist_name", "cohort_name &&& codelist_name &&& unit_concept_name", "cohort_name &&& codelist_name"),
@@ -262,22 +326,14 @@ test_that("summariseCohortMeasurementUse straifications work", {
       dplyr::pull("estimate_value"),
     c("0", "0")
   )
+
+  dropCreatedTables(cdm = cdm)
 })
 
 test_that("summariseMeasurementUse checks", {
   skip_on_cran()
   cdm <- testMockCdm()
   cdm <- copyCdm(cdm)
-  res <- summariseCohortMeasurementUse(
-    cohort = cdm$my_cohort,
-    codes = list("test" = 3001467L, "test2" = 1L, "test3" = 45875977L),
-    bySex = FALSE,
-    byYear = FALSE,
-    ageGroup = NULL,
-    checks = "measurement_timings"
-  )
-  expect_true(unique(res$result_id) == 1)
-  expect_true(omopgenerics::settings(res)$result_type == "measurement_timings")
 
   res <- summariseCohortMeasurementUse(
     cohort = cdm$my_cohort,
@@ -285,9 +341,20 @@ test_that("summariseMeasurementUse checks", {
     bySex = FALSE,
     byYear = FALSE,
     ageGroup = NULL,
-    checks = c("measurement_value_as_numeric", "measurement_value_as_concept")
+    checks = "measurement_summary"
   )
-  expect_true(all(omopgenerics::settings(res)$result_type %in% c("measurement_value_as_numeric", "measurement_value_as_concept")))
+  expect_true(unique(res$result_id) == 1)
+  expect_true(omopgenerics::settings(res)$result_type == "measurement_summary")
+
+  res <- summariseCohortMeasurementUse(
+    cohort = cdm$my_cohort,
+    codes = list("test" = 3001467L, "test2" = 1L, "test3" = 45875977L),
+    bySex = FALSE,
+    byYear = FALSE,
+    ageGroup = NULL,
+    checks = c("measurement_value_as_number", "measurement_value_as_concept")
+  )
+  expect_true(all(omopgenerics::settings(res)$result_type %in% c("measurement_value_as_number", "measurement_value_as_concept")))
 
   expect_null(
     summariseCohortMeasurementUse(
@@ -300,4 +367,6 @@ test_that("summariseMeasurementUse checks", {
       checks = character()
     )
   )
+
+  dropCreatedTables(cdm = cdm)
 })

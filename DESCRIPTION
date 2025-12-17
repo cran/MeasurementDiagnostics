@@ -1,7 +1,7 @@
 Package: MeasurementDiagnostics
 Type: Package
 Title: Diagnostics for Lists of Codes Based on Measurements
-Version: 0.1.0
+Version: 0.2.0
 Authors@R: c(
     person("Edward", "Burn", , "edward.burn@ndorms.ox.ac.uk", 
     role = c("aut"), comment = c(ORCID = "0000-0002-9286-1128")),
@@ -10,21 +10,21 @@ Authors@R: c(
     person("Marta", "Alcalde-Herraiz", , "marta.alcaldeherraiz@ndorms.ox.ac.uk", 
     role = c("aut"), comment = c(ORCID = "0009-0002-4405-1814")))
 Description: Diagnostics of list of codes based on concepts from the domains measurement and observation. This package works for data mapped to the Observational Medical Outcomes Partnership Common Data Model.
-Imports: cli, CohortConstructor (>= 0.4.0), DBI, dplyr, magrittr,
-        omopgenerics (>= 1.2.0), PatientProfiles (>= 1.4.0), purrr,
-        rlang, tidyr
-Suggests: CDMConnector (>= 2.0.0), CodelistGenerator (>= 3.5.0),
-        visOmopResults (>= 1.0.2), duckdb, knitr, omock (>= 0.4.0),
-        rmarkdown, testthat, ggplot2, gt, flextable, RPostgres,
-        lubridate, odbc
+Imports: CDMConnector (>= 2.0.0), cli, clock, CohortConstructor (>=
+        0.4.0), DBI, dplyr, glue, omopgenerics (>= 1.2.0),
+        PatientProfiles (>= 1.4.0), purrr, rlang, tidyr
+Suggests: CodelistGenerator (>= 3.5.0), visOmopResults (>= 1.4.0),
+        duckdb, knitr, omock (>= 0.4.0), rmarkdown, testthat, ggplot2,
+        gt, flextable, RPostgres, lubridate, odbc
 Depends: R (>= 4.1)
 License: Apache License (>= 2)
 Encoding: UTF-8
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
 URL: https://ohdsi.github.io/MeasurementDiagnostics/
+BugReports: https://github.com/ohdsi/MeasurementDiagnostics/issues
 VignetteBuilder: knitr
 NeedsCompilation: no
-Packaged: 2025-07-29 11:28:32 UTC; nmercade
+Packaged: 2025-12-16 21:05:16 UTC; nuriamb
 Author: Edward Burn [aut] (ORCID: <https://orcid.org/0000-0002-9286-1128>),
   Nuria Mercade-Besora [aut, cre] (ORCID:
     <https://orcid.org/0009-0006-7948-3747>),
@@ -32,4 +32,4 @@ Author: Edward Burn [aut] (ORCID: <https://orcid.org/0000-0002-9286-1128>),
     <https://orcid.org/0009-0002-4405-1814>)
 Maintainer: Nuria Mercade-Besora <nuria.mercadebesora@ndorms.ox.ac.uk>
 Repository: CRAN
-Date/Publication: 2025-07-29 11:50:02 UTC
+Date/Publication: 2025-12-17 10:10:33 UTC

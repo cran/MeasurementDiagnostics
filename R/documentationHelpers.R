@@ -16,8 +16,20 @@
 #' @param ageGroup If not NULL, a list of ageGroup vectors of length two.
 #' @param dateRange Two dates. The first indicating the earliest measurement
 #' date and the second indicating the latest possible measurement date.
-#' @param checks Diagnostics to run. Options are: "measurement_timing",
-#' "measurement_value_as_numeric", and "measurement_value_as_concept".
+#' @param estimates A named list indicating, for each measurement diagnostics
+#' check, which estimates to retrieve. The names of the list should correspond
+#' to the diagnostics checks, and each list element should be a character vector
+#' specifying the estimates to compute.
+#'
+#' Allowed estimates are those supported by the `summariseResult()` function in
+#' the **PatientProfiles** package. If omitted, all available estimates for
+#' each check will be returned.
+#' @param histogram Named list where names point to checks for which to get
+#' estimates for a histogram, and elements are numeric vectors indicating the
+#' bind-width. See function examples. Histogram only available for
+#' "measurement_summary" and "measurement_value_as_number".
+#' @param checks Diagnostics to run. Options are: "measurement_summary",
+#' "measurement_value_as_number", and "measurement_value_as_concept".
 #'
 #' @name summariseMeasurementDoc
 #' @keywords internal
@@ -34,7 +46,7 @@ NULL
 #' Helper for consistent documentation of `table`.
 #'
 #' @param type Type of table. Check supported types with
-#' `visOmopResults::tableType()`.
+#' `visOmopResults::tableType()`. If NULL 'gt' type will be used.
 #' @param header Columns to use as header. See options with
 #' `visOmopResults::tableColumns(result)`.
 #' @param groupColumn Columns to group by. See options with
@@ -44,10 +56,9 @@ NULL
 #' @param hide Columns to hide from the visualisation. See options with
 #' `visOmopResults::tableColumns(result)`.
 #' @param style Named list that specifies how to style the different parts of
-#'  the table generated. It can either be a pre-defined style ("default" or
-#'  "darwin" - the latter just for gt and flextable), NULL to get the table type
-#'  default style, or custom. Keep in mind that styling code is different for
-#'  all table styles. To see the different styles use visOmopResults::tableStyle().
+#' the table generated. It can either be a pre-defined style ("default" or
+#' "darwin" - the latter just for gt and flextable), or NULL which converts to
+#' "default" style, or custom code.
 #' @param .options A named list with additional formatting options.
 #' `visOmopResults::tableOptions()` shows allowed arguments and their default values.
 #'
@@ -61,12 +72,15 @@ NULL
 #' `visOmopResults::plotColumns(result)`.
 #' @param y Columns to use as horizontal axes. See options with
 #' `visOmopResults::plotColumns(result)`.
-#' @param plotType Type of plot, either "boxplot" or "densityplot".
+#' @param plotType Type of plot, either "boxplot", "barplot", or "densityplot".
 #' @param facet Columns to facet by. See options with
 #' `visOmopResults::plotColumns(result)`. Formula input is also allowed to
 #' specify rows and columns.
 #' @param colour Columns to color by. See options with
 #' `visOmopResults::plotColumns(result)`.
+#' @param style Pre-defined style to apply: "default" or
+#' "darwin" - the latter just for gt and flextable. If NULL the "default" style
+#' is used.
 #'
 #' @name plotDoc
 #' @keywords internal

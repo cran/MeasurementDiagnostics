@@ -1,12 +1,14 @@
-writeSchema <- function(dbToTest = Sys.getenv("DB_TO_TEST", "duckdb")) {
-  prefix <- paste0("coco_", sample(letters, 4) |> paste0(collapse = ""), "_")
+dbToTest <- Sys.getenv("DB_TO_TEST", "duckdb")
+
+writeSchema <- function() {
+  prefix <- paste0("mdiag_", paste0(sample(letters, 4), collapse = ""), "_")
   switch(dbToTest,
          "duckdb" = c(schema = "main", prefix = prefix),
          "sql server" = c(catalog = "ohdsi", schema = "dbo", prefix = prefix),
          "redshift" = c(schema = "resultsv281", prefix = prefix)
   )
 }
-connection <- function(dbToTest = Sys.getenv("DB_TO_TEST", "duckdb")) {
+connection <- function() {
   switch(dbToTest,
          "duckdb" = DBI::dbConnect(duckdb::duckdb(), ":memory:"),
          "sql server" = DBI::dbConnect(
@@ -30,9 +32,11 @@ connection <- function(dbToTest = Sys.getenv("DB_TO_TEST", "duckdb")) {
   )
 }
 copyCdm <- function(cdm) {
-  CDMConnector::copyCdmTo(
-    con = connection(), cdm = cdm, schema = writeSchema(), overwrite = TRUE
-  )
+  if (dbToTest != "local") {
+    src <- CDMConnector::dbSource(con = connection(), writeSchema = writeSchema())
+    cdm <- omopgenerics::insertCdmTo(cdm = cdm, to = src)
+  }
+  return(cdm)
 }
 testMockCdm <- function() {
 
@@ -84,8 +88,8 @@ testMockCdm <- function() {
   end <- start + ceiling((as.Date(max(as.Date("2020-01-01"), max(as.Date(dob)))) - start) * stats::runif(n = length(dob)))
   person_id <- dplyr::pull(cdm$person, person_id)
   observationPeriod <- dplyr::tibble(
-    observation_period_id = person_id,
-    person_id = person_id,
+    observation_period_id = as.integer(person_id),
+    person_id = as.integer(person_id),
     observation_period_start_date = as.Date(start),
     observation_period_end_date = as.Date(end),
     period_type_concept_id = NA_integer_
@@ -95,20 +99,22 @@ testMockCdm <- function() {
   )
 
   # concept
-  conceptSet <- c(8507, 8532, 3001467, 45875977, 194152, 4092121, 1033535, 4328749L, 4267416L, 9529)
+  conceptSet <- c(8507, 8532, 3001467, 45875977, 194152, 4092121, 1033535, 4328749, 4267416L, 9529)
+  sourceSet  <- c(12, 11, 122, 24442, 444, 45663, 2564, 250603, 45678, 23478273)
   conceptName <- c("Male", "Female", "Alkaline phosphatase.bone [Enzymatic activity/volume] in Serum or Plasma", "PhenX", "Renal agenesis and dysgenesis", "Level of mood", "Minimum Data Set", "High", "Low", "kilogram")
+  sourceName  <- c("Male", "Female", "Alkaline phosphatase.bone", "PhenX", "Agenesis and dysgenesis renal", "Mood", "Minimum Data Set", "High", "Low", "kg")
   domain <- c("Gender", "Gender", "Measurement", "Measurement", "Condition", "Observation", "Observation", "Meas Value", "Meas Value", "Unit")
   concept <- dplyr::tibble(
-    concept_id = conceptSet,
-    concept_name = conceptName,
-    domain_id = domain,
+    concept_id = as.integer(c(conceptSet, sourceSet)),
+    concept_name = c(conceptName, sourceName),
+    domain_id = rep(domain, 2),
     vocabulary_id = NA_character_,
-    standard_concept = "S",
+    standard_concept = c(rep("S", length(conceptName)), rep(NA_character_, length(sourceName))),
     concept_class_id = NA_character_,
     concept_code = NA_character_,
-    valid_start_date = NA,
-    valid_end_date = NA,
-    invalid_reason = NA
+    valid_start_date = as.Date(NA),
+    valid_end_date = as.Date(NA),
+    invalid_reason = NA_character_
   )
   cdm <- omopgenerics::insertTable(
     cdm = cdm, name = "concept", table = concept
@@ -117,6 +123,10 @@ testMockCdm <- function() {
   # measurement
   concept_id <- cdm$concept |>
     dplyr::filter(.data$domain_id == "Measurement" & .data$standard_concept == "S") |>
+    dplyr::distinct(concept_id) |>
+    dplyr::pull()
+  source_concept_id <- cdm$concept |>
+    dplyr::filter(.data$domain_id == "Measurement" & is.na(.data$standard_concept)) |>
     dplyr::distinct(concept_id) |>
     dplyr::pull()
   concept_count <- length(concept_id)
@@ -131,26 +141,26 @@ testMockCdm <- function() {
     ),
     measurement_date = recordDates[[1]],
     measurement_type_concept_id = 1L,
-    measurement_datetime = NA,
-    measurement_time = NA,
-    operator_concept_id = NA,
-    range_low = NA,
-    range_high = NA,
+    measurement_datetime = as.Date(NA),
+    measurement_time = NA_character_,
+    operator_concept_id = NA_integer_,
+    range_low = as.numeric(NA),
+    range_high = as.numeric(NA),
     provider_id = NA_integer_,
     visit_occurrence_id = NA_integer_,
     visit_detail_id = NA_integer_,
     measurement_source_value = NA_character_,
-    measurement_source_concept_id = NA_integer_,
+    measurement_source_concept_id = source_concept_id[1],
     unit_source_value = NA_character_,
     value_source_value = NA_character_
   )  |>
     dplyr::mutate(
-      unit_concept_id = dplyr::if_else(dplyr::row_number()%%2 == 0, 9529, NA),
+      unit_concept_id = dplyr::if_else(dplyr::row_number()%%2 == 0, 9529L, NA_integer_),
       value_as_number = dplyr::if_else(dplyr::row_number()<6, NA, seq(from = 5, to = 150, length.out = 100)),
       value_as_concept_id = dplyr::case_when(
-        dplyr::row_number()%%3 == 0 ~ 4328749,
-        dplyr::row_number()%%3 == 1 ~ 4267416,
-        dplyr::row_number()%%3 == 2 ~ NA,
+        dplyr::row_number()%%3 == 0 ~ 4328749L,
+        dplyr::row_number()%%3 == 1 ~ 4267416L,
+        dplyr::row_number()%%3 == 2 ~ NA_integer_,
       )
     )
   cdm <- omopgenerics::insertTable(
@@ -174,7 +184,7 @@ testMockCdm <- function() {
     ),
     observation_date = recordDates[[1]],
     observation_type_concept_id = 1L,
-    observation_datetime = NA,
+    observation_datetime = as.Date(NA),
     observation_time = NA,
     operator_concept_id = NA,
     range_low = NA,
@@ -186,16 +196,16 @@ testMockCdm <- function() {
     observation_source_concept_id = NA_integer_,
     unit_source_value = NA_character_,
     qualifier_source_value = NA_character_,
-    value_as_string = NA,
-    qualifier_concept_id = NA
+    value_as_string = NA_character_,
+    qualifier_concept_id = NA_integer_
   )  |>
     dplyr::mutate(
-      unit_concept_id = dplyr::if_else(dplyr::row_number()%%2 == 0, 9529, NA),
+      unit_concept_id = dplyr::if_else(dplyr::row_number()%%2 == 0, 9529L, NA_integer_),
       value_as_number = dplyr::if_else(dplyr::row_number()<6, NA, seq(from = 5, to = 150, length.out = 100)),
       value_as_concept_id = dplyr::case_when(
-        dplyr::row_number()%%3 == 0 ~ 4328749,
-        dplyr::row_number()%%3 == 1 ~ 4267416,
-        dplyr::row_number()%%3 == 2 ~ NA,
+        dplyr::row_number()%%3 == 0 ~ 4328749L,
+        dplyr::row_number()%%3 == 1 ~ 4267416L,
+        dplyr::row_number()%%3 == 2 ~ NA_integer_,
       )
     )
   cdm <- omopgenerics::insertTable(
@@ -270,7 +280,6 @@ testMockCdm <- function() {
     )
   return(cdm)
 }
-
 obsDate <- function(start, end) {
   r1 <- stats::runif(n = length(start))
   start <- start + floor((as.Date(end) - start) * r1)
@@ -278,4 +287,8 @@ obsDate <- function(start, end) {
   end <- start + ceiling((as.Date(end) - start) * r2)
   end <- pmax(start, end)
   list(start, end)
+}
+dropCreatedTables <- function(cdm) {
+  omopgenerics::dropSourceTable(cdm = cdm, name = dplyr::everything())
+  omopgenerics::cdmDisconnect(cdm = cdm)
 }

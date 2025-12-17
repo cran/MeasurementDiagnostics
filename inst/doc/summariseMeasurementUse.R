@@ -44,11 +44,11 @@ settings(repiratory_function_measurements) |>
   unique()
 
 ## -----------------------------------------------------------------------------
-tableMeasurementValueAsNumeric(repiratory_function_measurements)
+tableMeasurementValueAsNumber(repiratory_function_measurements)
 
 ## -----------------------------------------------------------------------------
 tableMeasurementValueAsConcept(repiratory_function_measurements)
 
 ## -----------------------------------------------------------------------------
-tableMeasurementTimings(repiratory_function_measurements)
+tableMeasurementSummary(repiratory_function_measurements)
 

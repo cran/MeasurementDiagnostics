@@ -1,4 +1,4 @@
-#' Format a measurement_timings object into a visual table
+#' Format a measurement_summary object into a visual table
 #'
 #' @inheritParams resultDoc
 #' @inheritParams tableDoc
@@ -10,25 +10,30 @@
 #' @examples
 #' \donttest{
 #' library(MeasurementDiagnostics)
+#'
 #' cdm <- mockMeasurementDiagnostics()
+#'
 #' result <- summariseMeasurementUse(
-#'               cdm = cdm,
-#'               codes = list("test_codelist" = c(3001467L, 45875977L)))
+#'   cdm = cdm,
+#'   codes = list("test_codelist" = c(3001467L, 45875977L))
+#' )
+#'
 #' tableMeasurementValueAsConcept(result)
+#'
 #' CDMConnector::cdmDisconnect(cdm = cdm)
 #'}
 tableMeasurementValueAsConcept <- function(result,
-                                           type = "gt",
                                            header = c(visOmopResults::strataColumns(result)),
                                            groupColumn = c("codelist_name"),
                                            settingsColumn = character(),
                                            hide = character(),
-                                           style = "default",
+                                           style = NULL,
+                                           type = NULL,
                                            .options = list()){
   rlang::check_installed("visOmopResults")
 
   # check inputs
-  result <- omopgenerics::validateResultArgument(result, call = call)
+  result <- omopgenerics::validateResultArgument(result)
 
   # subset to rows of interest
   result <- result |>
@@ -42,9 +47,10 @@ tableMeasurementValueAsConcept <- function(result,
   checkVersion(result)
 
   columnOrder <- c(
-    "cdm_name", "cohort_name", "codelist_name", "concept_name", "concept_id" ,
-    "domain_id", "sex", "age_group", "year", settingsColumn, "variable_name",
-    "variable_level", "value_as_concept_id", "estimate_name", "estimate_value"
+    "cdm_name", "cohort_name", "codelist_name", "concept_name", "concept_id",
+    "source_concept_name", "source_concept_id", "domain_id", "sex", "age_group",
+    "year", settingsColumn, "variable_name", "variable_level",
+    "value_as_concept_id", "estimate_name", "estimate_value"
   )
   # temp fix for visOmpReuslts issue 355
   columnOrder <- columnOrder[columnOrder %in% visOmopResults::tableColumns(result)]
@@ -72,11 +78,12 @@ tableMeasurementValueAsConcept <- function(result,
         "Domain ID" = "domain_id",
         "CDM name" = "cdm_name",
         "Concept ID" = "concept_id",
+        "Source concept ID" = "source_concept_id",
         "Value as concept name" = "variable_level",
         "Value as concept ID" = "value_as_concept_id"
       ),
       type = type,
-      hide = hide,
+      hide = unique(c(hide, "variable_name")),
       columnOrder = columnOrder,
       factor = factors,
       style = style,

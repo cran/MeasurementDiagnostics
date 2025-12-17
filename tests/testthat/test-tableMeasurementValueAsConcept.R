@@ -13,7 +13,7 @@ test_that("table works", {
                                                       hide = c(),
                                                       .options = list()))
   expect_true("gt_tbl" %in% class(x))
-  expect_true(all(c('Codelist name', 'CDM name', 'Concept name', 'Concept ID', "Domain ID", 'Variable name', 'Value as concept name', 'Value as concept ID', 'Estimate name', 'Estimate value') %in% colnames(x$`_data`)))
+  expect_true(all(c('Codelist name', 'CDM name', 'Concept name', 'Concept ID', "Source concept name", "Source concept ID", "Domain ID", 'Value as concept name', 'Value as concept ID', 'Estimate name', 'Estimate value') %in% colnames(x$`_data`)))
 
   expect_no_error(x <- tableMeasurementValueAsConcept(result, type = "flextable"))
   expect_true("flextable" %in% class(x))
@@ -28,10 +28,10 @@ test_that("table works", {
       "settings" = omopgenerics::settings(result) |>
         dplyr::mutate("package_version" = "0.0.0")
     )
-  expect_message(tableMeasurementTimings(x))
+  expect_message(tableMeasurementSummary(x))
 
   # Empty output message
-  expect_warning(x <- tableMeasurementTimings(
+  expect_warning(x <- tableMeasurementSummary(
     result = omopgenerics::emptySummarisedResult(), type = "gt"
   ))
 
@@ -40,8 +40,9 @@ test_that("table works", {
                                           codes = list("test_codelist" = c(3001467L, 45875977L)))
   expect_no_error(x <- tableMeasurementValueAsConcept(result, hide = character()))
   expect_true(all(
-    c('Codelist name', 'CDM name', 'Cohort name', 'Concept name', 'Concept ID', "Domain ID",
-      'Variable name', 'Value as concept name', 'Value as concept ID', 'Estimate name',
+    c('Codelist name', 'CDM name', 'Cohort name', 'Concept name', 'Concept ID',
+      "Source concept name", "Source concept ID", "Domain ID",
+      'Value as concept name', 'Value as concept ID', 'Estimate name',
       '[header_name]Sex\n[header_level]overall',
       '[header_name]Sex\n[header_level]Male') %in%
       colnames(x$`_data`)))
@@ -51,5 +52,5 @@ test_that("table works", {
   result <- result |> dplyr::filter(variable_name != "number records")
   expect_no_error(x <- tableMeasurementValueAsConcept(result, settingsColumn = "timing"))
 
-  CDMConnector::cdmDisconnect(cdm = cdm)
+  dropCreatedTables(cdm = cdm)
 })

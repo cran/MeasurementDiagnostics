@@ -10,7 +10,7 @@
 \item{y}{Columns to use as horizontal axes. See options with
 `visOmopResults::plotColumns(result)`.}
 
-\item{plotType}{Type of plot, either "boxplot" or "densityplot".}
+\item{plotType}{Type of plot, either "boxplot", "barplot", or "densityplot".}
 
 \item{facet}{Columns to facet by. See options with
 `visOmopResults::plotColumns(result)`. Formula input is also allowed to
@@ -18,6 +18,10 @@ specify rows and columns.}
 
 \item{colour}{Columns to color by. See options with
 `visOmopResults::plotColumns(result)`.}
+
+\item{style}{Pre-defined style to apply: "default" or
+"darwin" - the latter just for gt and flextable. If NULL the "default" style
+is used.}
 }
 \description{
 Helper for consistent documentation of `plot`.

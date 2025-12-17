@@ -76,7 +76,7 @@ settings(repiratory_function_measurements) |>
 
 One of the checks summarises the numeric values associated with tests. We can quickly create a table summarising these results.
 ```{r}
-tableMeasurementValueAsNumeric(repiratory_function_measurements)
+tableMeasurementValueAsNumber(repiratory_function_measurements)
 ```
 
 Similarly, we can see a summary of concept values associated with measurements. We can see from this that our respiratory function measurements do not have concept value results (instead having numeric values which we see in the table above).
@@ -86,5 +86,5 @@ tableMeasurementValueAsConcept(repiratory_function_measurements)
 
 As well as overview of the values of measurements, we can also see a summary of the timing between measurements for individuals in the dataset.
 ```{r}
-tableMeasurementTimings(repiratory_function_measurements)
+tableMeasurementSummary(repiratory_function_measurements)
 ```

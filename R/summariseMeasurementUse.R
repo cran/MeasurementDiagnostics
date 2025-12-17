@@ -8,12 +8,50 @@
 #' @examples
 #' \donttest{
 #' library(MeasurementDiagnostics)
+#'
 #' cdm <- mockMeasurementDiagnostics()
+#'
 #' result <- summariseMeasurementUse(
 #'   cdm = cdm, codes = list("test_codelist" = c(3001467L, 45875977L))
 #' )
+#'
+#' resultHistogram <- summariseMeasurementUse(
+#'   cdm = cdm,
+#'   codes = list("test_codelist" = c(3001467L, 45875977L)),
+#'   byConcept = TRUE,
+#'   byYear = FALSE,
+#'   bySex = FALSE,
+#'   ageGroup = NULL,
+#'   dateRange = as.Date(c(NA, NA)),
+#'   estimates = list(
+#'     "measurement_summary" = c("min", "q25", "median", "q75", "max", "density"),
+#'     "measurement_value_as_number" = c(
+#'       "min", "q01", "q05", "q25", "median", "q75", "q95", "q99", "max",
+#'       "count_missing", "percentage_missing", "density"
+#'     ),
+#'     "measurement_value_as_concept" = c("count", "percentage")
+#'   ),
+#'   histogram = list(
+#'     "time" = list(
+#'       '0 to 100' = c(0, 100), '110 to 200' = c(110, 200),
+#'       '210 to 300' = c(210, 300), '310 to Inf' = c(310, Inf)
+#'     ),
+#'     "measurements_per_subject" = list(
+#'       '0 to 10' = c(0, 10), '11 to 20' = c(11, 20),
+#'       '21 to 30' = c(21, 30), '31 to Inf' = c(31, Inf)
+#'     ),
+#'     "value_as_number" =  list(
+#'       '0 to 5' = c(0, 5), '6 to 10' = c(6, 10),
+#'       '11 to 15' = c(11, 15), '>15' = c(16, Inf)
+#'     )
+#'   ),
+#'   checks = c("measurement_summary", "measurement_value_as_number", "measurement_value_as_concept")
+#' )
+#'
 #' CDMConnector::cdmDisconnect(cdm = cdm)
 #'}
+#'
+
 summariseMeasurementUse <- function(cdm,
                                     codes,
                                     byConcept = TRUE,
@@ -21,10 +59,15 @@ summariseMeasurementUse <- function(cdm,
                                     bySex = FALSE,
                                     ageGroup = NULL,
                                     dateRange = as.Date(c(NA, NA)),
-                                    checks = c("measurement_timings", "measurement_value_as_numeric", "measurement_value_as_concept")) {
+                                    estimates = list(
+                                      "measurement_summary" = c("min", "q25", "median", "q75", "max", "density"),
+                                      "measurement_value_as_number" = c("min", "q01", "q05", "q25", "median", "q75", "q95", "q99", "max", "count_missing", "percentage_missing", "density"),
+                                      "measurement_value_as_concept" = c("count", "percentage")
+                                    ),
+                                    histogram = NULL,
+                                    checks = c("measurement_summary", "measurement_value_as_number", "measurement_value_as_concept")) {
   # check inputs
   cdm <- omopgenerics::validateCdmArgument(cdm)
-  prefix <- omopgenerics::tmpPrefix()
 
   result <- summariseMeasurementUseInternal(
     cdm = cdm,
@@ -37,6 +80,8 @@ summariseMeasurementUse <- function(cdm,
     bySex = bySex,
     ageGroup = ageGroup,
     dateRange = dateRange,
+    estimates = estimates,
+    histogram = histogram,
     checks = checks
   )
 
@@ -54,17 +99,26 @@ summariseMeasurementUseInternal <- function(cdm,
                                             bySex,
                                             ageGroup,
                                             dateRange,
+                                            estimates,
+                                            histogram,
                                             checks) {
   # checks
-  codes <- omopgenerics::validateConceptSetArgument(codes)
+  if (is.null(codes)) {
+    codesTable <- attr(cohort, "cohort_codelist")
+    codes <- omopgenerics::newCodelist(codesTable)
+  } else {
+    codesTable <- NULL
+    codes <- omopgenerics::validateConceptSetArgument(codes)
+  }
   ageGroup <- omopgenerics::validateAgeGroupArgument(ageGroup = ageGroup)
   omopgenerics::assertLogical(byConcept, length = 1)
   omopgenerics::assertLogical(byYear, length = 1)
   omopgenerics::assertLogical(bySex, length = 1)
   omopgenerics::assertDate(dateRange, length = 2, na = TRUE)
-  omopgenerics::assertChoice(
-    checks, choices = c("measurement_timings", "measurement_value_as_numeric", "measurement_value_as_concept")
-  )
+  allowedChecks <- c("measurement_summary", "measurement_value_as_number", "measurement_value_as_concept")
+  omopgenerics::assertChoice(checks, choices = allowedChecks)
+  estimates <- validateEstimates(estimates, allowedChecks)
+  histogram <- validateHistogram(histogram)
   if (all(!is.na(dateRange))) {
     if (dateRange[1] > dateRange[2]) {
       cli::cli_abort("First date component in `dateRange` must be smaller than the second.")
@@ -117,101 +171,222 @@ summariseMeasurementUseInternal <- function(cdm,
 
   cli::cli_inform(c(">" = "Subsetting records to the subjects and timing of interest."))
   # subset to cohort and timing
-  measurement <- subsetMeasurementTable(cdm, cohortName, timing, measurementCohortName, dateRange)
+  measurement <- subsetMeasurementTable(cdm, cohortName, codesTable, timing, measurementCohortName, dateRange, prefix)
   measurement <- measurement |>
     dplyr::rename("subject_id" = "person_id", "cohort_start_date" = "record_date") |>
-    dplyr::mutate(cohort_definition_id = 1L, cohort_end_date = .data$cohort_start_date) |>
+    dplyr::mutate(cohort_end_date = .data$cohort_start_date) |>
     dplyr::compute(name = measurementCohortName, temporary = FALSE) |>
     omopgenerics::newCohortTable(
       cohortSetRef = measurementSettings,
       .softValidation = TRUE # allow overlap
     )
-
   if (dplyr::pull(dplyr::tally(measurement)) == 0) {
     cli::cli_warn("No records were found.")
     return(omopgenerics::emptySummarisedResult())
   }
 
+  # prepare table according to checks to do
+  valueAsNumberFlag <- "measurement_value_as_number" %in% checks & "measurement_value_as_number" %in% names(estimates)
+  valueAsConceptFlag <- "measurement_value_as_concept" %in% checks & "measurement_value_as_concept" %in% names(estimates)
+  sourceConceptFlag <- byConcept & (valueAsNumberFlag | valueAsConceptFlag)
+  indexCols <- c("codelist_name", "unit_concept_id", "source_concept_id", "value_as_concept_id")[c(TRUE, valueAsNumberFlag, sourceConceptFlag, valueAsConceptFlag)]
+  addIndex(measurement, cols = indexCols)
+  # unit concept name
+  if (valueAsNumberFlag) {
+    measurement <- measurement |> addConceptName(prefix = "unit")
+  }
+  # source concept name
+  if (sourceConceptFlag) {
+    measurement <- measurement |> addConceptName(prefix = "source")
+  }
+  # value as concept name
+  if (valueAsConceptFlag) {
+    measurement <- measurement |> addConceptName(prefix = "value_as")
+  }
+
   # group and strata
   baseGroup <- c("cohort_name", "codelist_name")[c(!is.null(cohort), TRUE)]
+  byConceptGroup <- c("concept_id", "source_concept_id", "source_concept_name")
+  unitGroup <- c("unit_concept_id", "unit_concept_name")
   strata <- as.list(c("sex", "age_group", "year")[c(bySex, length(ageGroup)>0, byYear)])
   measurement <- measurement |> addStrata(bySex, byYear, ageGroup, measurementCohortName)
 
   ## measurements per subject
-  if ("measurement_timings" %in% checks) {
+  if ("measurement_summary" %in% checks & "measurement_summary" %in% names(estimates)) {
     cli::cli_inform(c(">" = "Getting time between records per person."))
-    measurementTiming <- measurement |>
-      dplyr::group_by(.data$codelist_name, .data$subject_id) |>
+    groupCols <- c("cohort_name"[!is.null(cohort)], "codelist_name", "subject_id")
+    measurement <- measurement |>
+      dplyr::group_by_at(groupCols) |>
       dplyr::arrange(.data$cohort_start_date) |>
-      dplyr::mutate(previous_measurement = dplyr::lag(.data$cohort_start_date)) %>%
+      dplyr::mutate(previous_measurement = dplyr::lag(.data$cohort_start_date)) |>
       dplyr::mutate(
-        time = !!CDMConnector::datediff("previous_measurement", "cohort_start_date"),
-        measurements_per_subject = dplyr::n()
+        time = as.integer(clock::date_count_between(
+          start = .data$previous_measurement,
+          end = .data$cohort_start_date,
+          precision = "day"
+        ))
       ) |>
       dplyr::ungroup() |>
-      dplyr::collect() |>
+      dplyr::compute(name = measurementCohortName, temporary = FALSE)
+
+    timeHistogram <- "time" %in% names(histogram)
+    if (timeHistogram) {
+      measurement <- measurement |>
+        dplyr::mutate(!!!histogramBandExpr(histogram[["time"]], name = "time", newName = "time_band")) |>
+        dplyr::compute(name = measurementCohortName, temporary = FALSE)
+    }
+
+    measurementSummary <- list()
+    for (codelistName in unique(measurementSettings$codelist_name)) {
+      measurementTimingCollect <- measurement |>
+        dplyr::inner_join(
+          cdm[[settingsTableName]] |>
+            dplyr::filter(.data$codelist_name == .env$codelistName) |>
+            dplyr::select("codelist_name"),
+          by = "codelist_name"
+        ) |>
+        dplyr::collect()
+      if (nrow(measurementTimingCollect) > 0) {
+        measurementSummary[[codelistName]] <- measurementTimingCollect |>
+          PatientProfiles::summariseResult(
+            group = list(baseGroup),
+            includeOverallGroup = FALSE,
+            strata = strata,
+            includeOverallStrata = TRUE,
+            variables = c("time", "time_band")[c(TRUE, timeHistogram)],
+            estimates = c(estimates$measurement_summary, "count"[timeHistogram]),
+            counts = TRUE
+          ) |>
+          suppressMessages()
+      }
+    }
+    rm(measurementTimingCollect)
+
+    cli::cli_inform(c(">" = "Getting measurements per subject."))
+    measurementSubjects<- measurement |>
+      dplyr::mutate(overall = "overall") |>
+      dplyr::group_by_at(c(groupCols, unlist(strata))) |>
+      dplyr::summarise(
+        measurements_per_subject = dplyr::n(),
+        .groups = "drop"
+      ) |>
+      dplyr::ungroup() |>
+      dplyr::collect()
+
+    subjectHistogram <- "measurements_per_subject" %in% names(histogram)
+    if (subjectHistogram) {
+      measurementSubjects <- measurementSubjects |>
+        dplyr::mutate(!!!histogramBandExpr(histogram[["measurements_per_subject"]], name = "measurements_per_subject", newName = "measurements_per_subject_band"))
+    }
+
+    measurementSummary[["subjects"]] <- measurementSubjects |>
       PatientProfiles::summariseResult(
         group = list(baseGroup),
         includeOverallGroup = FALSE,
         strata = strata,
         includeOverallStrata = TRUE,
-        variables = c("time", "measurements_per_subject"),
-        estimates = c("min", "q25", "median", "q75", "max", "density"),
-        counts = TRUE
+        variables = c("measurements_per_subject", "measurements_per_subject_band"[subjectHistogram]),
+        estimates = c(estimates$measurement_summary, "count"[subjectHistogram]),
+        counts = FALSE
       ) |>
-      suppressMessages() |>
+      suppressMessages()
+
+    # Bind and transform results
+    measurementSummary <- omopgenerics::bind(measurementSummary) |>
+      dplyr::filter(!(.data$variable_name %in% c("time", "measurements_per_subject") & .data$estimate_name == "count")) |>
+      dplyr::mutate(variable_name = gsub("_band", "", .data$variable_name)) |>
       transformMeasurementRecords(
         cdm, newSet = cdm[[settingsTableName]] |> dplyr::collect(),
         installedVersion, timingName, cohortName, dateRange
       )
   } else {
-    measurementTiming <- NULL
+    measurementSummary <- NULL
   }
 
-  ## measurement value
-  if ("measurement_value_as_numeric" %in% checks) {
+  ## measurement value as numeric
+  if (valueAsNumberFlag) {
     cli::cli_inform(c(">" = "Summarising results - value as number."))
-    # as numeric
-    # 1) summarise numeric distribution
-    measurementNumeric <- measurement |>
-      dplyr::select(!"value_as_concept_id") |>
-      dplyr::collect() |>
-      PatientProfiles::summariseResult(
-        group = list(c(baseGroup, "unit_concept_id"), c(baseGroup, "concept_id", "unit_concept_id"))[c(TRUE, byConcept)],
-        includeOverallGroup = FALSE,
-        strata = strata,
-        includeOverallStrata = TRUE,
-        variables = "value_as_number",
-        estimates = c("min", "q01", "q05", "q25", "median", "q75", "q95", "q99", "max", "count_missing", "percentage_missing", "density"),
-        counts = TRUE,
-        weights = NULL
-      ) |>
-      suppressMessages() |>
+    valueAsNumber <- list()
+
+    numberHistogram <- "value_as_number" %in% names(histogram)
+    if (numberHistogram) {
+      measurement <- measurement |>
+        dplyr::mutate(!!!histogramBandExpr(histogram[["value_as_number"]], name = "value_as_number", newName = "value_as_number_band")) |>
+        dplyr::compute(name = measurementCohortName, temporary = FALSE)
+    }
+
+    for (codelistName in unique(measurementSettings$codelist_name)) {
+      valueAsNumberCollect <- measurement |>
+        dplyr::inner_join(
+          cdm[[settingsTableName]] |>
+            dplyr::filter(.data$codelist_name == .env$codelistName) |>
+            dplyr::select("codelist_name"),
+          by = "codelist_name"
+        ) |>
+        dplyr::select(!dplyr::any_of(c("value_as_concept_id", "value_as_concept_name"))) |>
+        dplyr::collect()
+      if (nrow(valueAsNumberCollect) > 0) {
+        valueAsNumber[[codelistName]] <- valueAsNumberCollect |>
+          PatientProfiles::summariseResult(
+            group = list(c(baseGroup, unitGroup), c(baseGroup, byConceptGroup, unitGroup))[c(TRUE, byConcept)],
+            includeOverallGroup = FALSE,
+            strata = strata,
+            includeOverallStrata = TRUE,
+            variables = c("value_as_number", "value_as_number_band"[numberHistogram]),
+            estimates = c(estimates$measurement_value_as_number, "count"[numberHistogram]),
+            counts = TRUE,
+            weights = NULL
+          ) |>
+          suppressMessages()
+      }
+    }
+    rm(valueAsNumberCollect)
+    measurementNumber <- omopgenerics::bind(valueAsNumber) |>
+      dplyr::filter(.data$variable_name != "number subjects") |>
+      dplyr::filter(!(.data$variable_name %in% c("time", "measurements_per_subject") & .data$estimate_name == "count")) |>
+      dplyr::mutate(variable_name = gsub("_band", "", .data$variable_name)) |>
       transformMeasurementValue(
         cdm = cdm, newSet = cdm[[settingsTableName]] |> dplyr::collect(),
         cohortName = cohortName, installedVersion = installedVersion,
         timing = timingName, byConcept = byConcept, dateRange
       )
   } else {
-    measurementNumeric <- NULL
+    measurementNumber <- NULL
   }
 
-  ## counts as concept
-  if ("measurement_value_as_concept" %in% checks) {
+  ## measurement value as concept
+  if (valueAsConceptFlag) {
     cli::cli_inform(c(">" = "Summarising results - value as concept."))
-    measurementConcept <- measurement |>
-      dplyr::mutate(value_as_concept_id = as.character(.data$value_as_concept_id)) |>
-      PatientProfiles::summariseResult(
-        group = list(baseGroup, c(baseGroup, "concept_id"))[c(TRUE, byConcept)],
-        includeOverallGroup = FALSE,
-        strata = strata,
-        includeOverallStrata = TRUE,
-        variables = "value_as_concept_id",
-        estimates = c("count", "percentage"),
-        counts = FALSE,
-        weights = NULL
-      ) |>
-      suppressMessages() |>
+    valueAsConcept <- list()
+    for (codelistName in unique(measurementSettings$codelist_name)) {
+      valueAsConceptCollected <-  measurement |>
+        dplyr::inner_join(
+          cdm[[settingsTableName]] |>
+            dplyr::filter(.data$codelist_name == .env$codelistName) |>
+            dplyr::select("codelist_name"),
+          by = "codelist_name"
+        ) |>
+        dplyr::mutate(
+          value_as_concept_id = paste0(as.character(.data$value_as_concept_id), " &&& ", .data$value_as_concept_name)
+        ) |>
+        dplyr::collect()
+      if (nrow(valueAsConceptCollected) > 0) {
+        valueAsConcept[[codelistName]] <- valueAsConceptCollected |>
+          PatientProfiles::summariseResult(
+            group = list(baseGroup, c(baseGroup, byConceptGroup))[c(TRUE, byConcept)],
+            includeOverallGroup = FALSE,
+            strata = strata,
+            includeOverallStrata = TRUE,
+            variables = "value_as_concept_id",
+            estimates = estimates$measurement_value_as_concept,
+            counts = FALSE,
+            weights = NULL
+          ) |>
+          suppressMessages()
+      }
+    }
+    rm(valueAsConceptCollected)
+    measurementConcept <- omopgenerics::bind(valueAsConcept) |>
       transformMeasurementConcept(
         cdm = cdm, newSet = cdm[[settingsTableName]] |> dplyr::collect(),
         cohortName = cohortName, installedVersion = installedVersion,
@@ -226,7 +401,7 @@ summariseMeasurementUseInternal <- function(cdm,
 
   return(
     omopgenerics::bind(
-      measurementTiming, measurementNumeric, measurementConcept
+      measurementSummary, measurementNumber, measurementConcept
     )
   )
 }
@@ -243,27 +418,41 @@ groupIdToName <- function(x, newSet, cols = c("codelist_name", "concept_name")) 
     omopgenerics::uniteGroup(cols = cols)
 }
 
-subsetMeasurementTable <- function(cdm, cohortName, timing, name, dateRange) {
+subsetMeasurementTable <- function(cdm, cohortName, codesTable, timing, name, dateRange, prefix) {
   # if ANY : no need to filter for dates
   # if DURING : needs to be in observation / in cohort
   # if COHORT_START_DATE : cohort_start_date/observation_period_start_date = measurement date
 
   if (is.null(cohortName) & timing == "any") {
     return(
-      cdm[[name]] |>
-        measurementInDateRange(dateRange, name)
+      cdm[[name]] |> measurementInDateRange(dateRange, name)
     )
   }
-  cohort <- CohortConstructor::addCohortTableIndex(cdm[[cohortName]])
+
+  codelistAttribute <- !is.null(codesTable)
+  cohort <- cdm[[cohortName]]
+  if (codelistAttribute) {
+    cohort <- cohort |>
+      dplyr::select(!dplyr::any_of(c("codelist_name", "concept_id"))) |>
+      dplyr::inner_join(
+        codesTable |>
+          dplyr::distinct(.data$cohort_definition_id, .data$codelist_name, .data$concept_id),
+        by = "cohort_definition_id"
+      ) |>
+      dplyr::compute(name = omopgenerics::uniqueTableName(prefix = prefix), temporary = FALSE) |>
+      omopgenerics::newCohortTable()
+  }
+  cohort <- CohortConstructor::addCohortTableIndex(cohort)
+
   if (timing == "during") {
     measurement <- cdm[[name]] |>
       dplyr::inner_join(
         cohort |>
           PatientProfiles::addCohortName() |>
           dplyr::select(
-            "person_id" = "subject_id", "cohort_start_date", "cohort_end_date", "cohort_name"
+            "person_id" = "subject_id", "cohort_start_date", "cohort_end_date", "cohort_name", "codelist_name"[codelistAttribute], "concept_id"[codelistAttribute]
           ),
-        by = "person_id",
+        by = c("person_id", "codelist_name"[codelistAttribute], "concept_id"[codelistAttribute]),
         relationship = "many-to-many"
       ) |>
       dplyr::filter(
@@ -274,26 +463,26 @@ subsetMeasurementTable <- function(cdm, cohortName, timing, name, dateRange) {
       dplyr::compute(name = name, temporary = FALSE)
   }
   if (timing == "cohort_start_date") {
-    measurement <-   measurement <- cdm[[name]] |>
+    measurement <- cdm[[name]] |>
       dplyr::inner_join(
         cohort |>
           PatientProfiles::addCohortName() |>
           dplyr::select(
-            "person_id" = "subject_id", "record_date" = "cohort_start_date", "cohort_name"
+            "person_id" = "subject_id", "record_date" = "cohort_start_date", "cohort_name", "codelist_name"[codelistAttribute], "concept_id"[codelistAttribute]
           ),
-        by = c("person_id", "record_date"),
+        by = c("person_id", "record_date", "codelist_name"[codelistAttribute], "concept_id"[codelistAttribute]),
         relationship = "many-to-many"
       ) |>
       dplyr::compute(name = name, temporary = FALSE)
   }
   if (timing == "any") {
-    measurement <-   measurement <- cdm[[name]] |>
+    measurement <- cdm[[name]] |>
       dplyr::inner_join(
         cohort |>
           PatientProfiles::addCohortName() |>
-          dplyr::select("person_id" = "subject_id", "cohort_name") |>
+          dplyr::select("person_id" = "subject_id", "cohort_name", "codelist_name"[codelistAttribute], "concept_id"[codelistAttribute]) |>
           dplyr::distinct(),
-        by = c("person_id")
+        by = c("person_id", "codelist_name"[codelistAttribute], "concept_id"[codelistAttribute])
       ) |>
       dplyr::compute(name = name, temporary = FALSE)
   }
@@ -411,26 +600,15 @@ transformMeasurementRecords <- function(x, cdm, newSet, installedVersion, timing
     ) |>
     omopgenerics::uniteAdditional() |>
     dplyr::select(omopgenerics::resultColumns()) |>
-    updateSummarisedResultSettings(resultType = "measurement_timings", installedVersion, timingName, dateRange)
+    updateSummarisedResultSettings(resultType = "measurement_summary", installedVersion, timingName, dateRange)
 
   return(x)
 }
 
 transformMeasurementValue <- function(x, cdm, newSet, cohortName, installedVersion, timing, byConcept, dateRange) {
   x <- x |>
-    dplyr::filter(.data$variable_name != "number subjects") |>
     omopgenerics::splitGroup() |>
     omopgenerics::splitAdditional() |>
-    dplyr::left_join(
-      cdm$concept |>
-        dplyr::select(
-          "unit_concept_id" = "concept_id",
-          "unit_concept_name" = "concept_name"
-        ) |>
-        dplyr::collect() |>
-        dplyr::mutate(unit_concept_id = as.character(.data$unit_concept_id)),
-      by = "unit_concept_id"
-    ) |>
     dplyr::mutate(
       cdm_name = omopgenerics::cdmName(cdm),
       unit_concept_name = dplyr::if_else(
@@ -442,9 +620,18 @@ transformMeasurementValue <- function(x, cdm, newSet, cohortName, installedVersi
     )
 
   if (byConcept) {
-    x <- x |>
-      groupIdToName(newSet = newSet, cols = c("cohort_name"[!is.null(cohortName)], "codelist_name", "concept_name", "unit_concept_name")) |>
-      omopgenerics::uniteAdditional(cols = c("concept_id", "unit_concept_id", "domain_id"))
+    x <- x  |>
+      dplyr::mutate(
+        cdm_name = omopgenerics::cdmName(cdm),
+        source_concept_name = dplyr::if_else(
+          is.na(.data$source_concept_name), "-", .data$source_concept_name
+        ),
+        source_concept_id = dplyr::if_else(
+          .data$source_concept_id == "NA" | is.na(.data$source_concept_id), "-", .data$source_concept_id
+        )
+      ) |>
+      groupIdToName(newSet = newSet, cols = c("cohort_name"[!is.null(cohortName)], "codelist_name", "concept_name", "source_concept_name", "unit_concept_name")) |>
+      omopgenerics::uniteAdditional(cols = c("concept_id", "source_concept_id", "unit_concept_id", "domain_id"))
   } else {
     x <- x |>
       omopgenerics::uniteGroup(cols = c("cohort_name"[!is.null(cohortName)], "codelist_name", "unit_concept_name")) |>
@@ -453,7 +640,7 @@ transformMeasurementValue <- function(x, cdm, newSet, cohortName, installedVersi
 
   x <- x  |>
     dplyr::select(omopgenerics::resultColumns()) |>
-    updateSummarisedResultSettings(resultType = "measurement_value_as_numeric", installedVersion, timing, dateRange)
+    updateSummarisedResultSettings(resultType = "measurement_value_as_number", installedVersion, timing, dateRange)
 
   return(x)
 }
@@ -463,28 +650,20 @@ transformMeasurementConcept <- function(x, cdm, newSet, cohortName,
   x <- x |>
     dplyr::select(!c("additional_name", "additional_level")) |>
     dplyr::rename("value_as_concept_id" = "variable_level") |>
-    dplyr::left_join(
-      cdm$concept |>
-        dplyr::select(
-          "variable_level" = "concept_name",
-          "value_as_concept_id" = "concept_id"
-        )|>
-        dplyr::collect() |>
-        dplyr::mutate(value_as_concept_id = as.character(.data$value_as_concept_id)),
-      by = "value_as_concept_id"
-    ) |>
     dplyr::mutate(
+      variable_level = gsub(".* &&& ", "", .data$value_as_concept_id),
+      value_as_concept_id = gsub(" &&& .*", "", .data$value_as_concept_id),
       variable_name = gsub("_id", "_name", "value_as_concept_id"),
       cohort_table = cohortName,
-      value_as_concept_id = dplyr::if_else(is.na(.data$value_as_concept_id), "-", .data$value_as_concept_id),
-      variable_level = dplyr::if_else(is.na(.data$variable_level), "-", .data$variable_level)
+      value_as_concept_id = dplyr::if_else(nchar(.data$value_as_concept_id) == 0, "-", .data$value_as_concept_id),
+      variable_level = dplyr::if_else(nchar(.data$variable_level) == 0, "-", .data$variable_level)
     )
 
   if (byConcept) {
     x <- x |>
       omopgenerics::splitGroup() |>
-      groupIdToName(newSet = newSet, cols = c("cohort_name"[!is.null(cohortName)], "codelist_name", "concept_name")) |>
-      omopgenerics::uniteAdditional(cols = c("concept_id", "value_as_concept_id", "domain_id")) |>
+      groupIdToName(newSet = newSet, cols = c("cohort_name"[!is.null(cohortName)], "codelist_name", "concept_name", "source_concept_name")) |>
+      omopgenerics::uniteAdditional(cols = c("concept_id", "source_concept_id", "value_as_concept_id", "domain_id")) |>
       dplyr::select(omopgenerics::resultColumns())
   } else {
     x <- x |>
@@ -511,8 +690,8 @@ addStrata <- function(x, bySex, byYear, ageGroup, name) {
   }
 
   if (byYear) {
-    x <- x %>%
-      dplyr::mutate(year = !!CDMConnector::datepart("cohort_start_date", "year")) |>
+    x <- x |>
+      dplyr::mutate(year = clock::get_year(.data$cohort_start_date)) |>
       dplyr::compute(name = name, temporary = FALSE)
   }
 
@@ -571,7 +750,8 @@ getCohortFromCodes <- function(cdm, codes, settingsTableName, name) {
         "concept_id",
         "unit_concept_id",
         "value_as_number",
-        "value_as_concept_id"
+        "value_as_concept_id",
+        "source_concept_id" = paste0(tab, "_source_concept_id")
       ))) |>
       dplyr::mutate(
         unit_concept_id = as.integer(.data$unit_concept_id),
@@ -581,4 +761,92 @@ getCohortFromCodes <- function(cdm, codes, settingsTableName, name) {
 
   Reduce(dplyr::union_all, tables) |>
     dplyr::compute(name = name, temporary = FALSE)
+}
+
+validateEstimates <- function(estimates, checks) {
+
+  if (is.null(estimates)) cli::cli_abort("`estimates` cannot be NULL.")
+  if (any(!names(estimates) %in% checks)) {
+    cli::cli_abort(c(
+      "x" = "All elements of `estimates` must be named with valid diagnostics checks in `checks`.",
+      ">" = "Each check in `checks` must have corresponding estimates."
+    ))
+  }
+
+  allowedNumeric <- PatientProfiles::availableEstimates() |>
+    dplyr::filter(.data$variable_type == "numeric") |>
+    dplyr::pull("estimate_name")
+  allowedCategorical <- PatientProfiles::availableEstimates() |>
+    dplyr::filter(.data$variable_type == "categorical") |>
+    dplyr::pull("estimate_name")
+
+  # check numeric
+  for (nm in c("measurement_value_as_number", "measurement_summary")) {
+    if (nm %in% names(estimates)) {
+      estimatesNumeric <- estimates[[nm]][!grepl("q", estimates[[nm]])]
+      notAllowed <- !estimatesNumeric %in% allowedNumeric
+      if (sum(notAllowed) > 0) {
+        cli::cli_warn("{estimatesNumeric[notAllowed]} in `estimates` not allowed for '{nm}', and will be ignored.")
+        estimates[[nm]] <- estimates[[nm]][!estimates[[nm]] %in% estimatesNumeric[notAllowed]]
+      }
+    }
+  }
+
+  # check categorical
+  if ("measurement_value_as_concept" %in% names(estimates)) {
+    estimatesCategorical <- estimates[["measurement_value_as_concept"]]
+    notAllowed <- !estimatesCategorical %in% allowedCategorical
+    if (sum(notAllowed) > 0) {
+      cli::cli_warn("{estimatesCategorical[notAllowed]} in `estimates` not allowed for 'measurement_value_as_concept', and will be ignored.")
+      estimates[["measurement_value_as_concept"]] <- estimatesCategorical[!notAllowed]
+    }
+  }
+
+  estimates <- estimates[!sapply(estimates, \(x){length(x)==0})]
+
+  return(estimates)
+}
+
+validateHistogram <- function(histogram) {
+  omopgenerics::assertList(histogram, null = TRUE, named = TRUE)
+  newHistogram <- list()
+  for (nm in names(histogram)) {
+    # check name
+    if (!nm %in% c("time", "measurements_per_subject", "value_as_number")) {
+      cli::cli_warn(c(
+        "{nm} is not a `check` for which to get estimates for a histogram.",
+        "i" = "Options are: 'time', 'measurements_per_subject', and 'value_as_number'."
+      ))
+    }
+    # check bandwidth & correct/add names
+    newHistogram[[nm]] <- omopgenerics::validateWindowArgument(histogram[[nm]], snakeCase = FALSE)
+  }
+  return(newHistogram)
+}
+
+addConceptName <- function(table, prefix) {
+  name <- omopgenerics::tableName(table)
+  cdm <- omopgenerics::cdmReference(table)
+  table |>
+    dplyr::left_join(
+      cdm$concept |>
+        dplyr::select(dplyr::all_of(c("concept_id", "concept_name"))) |>
+        dplyr::rename_with(~paste0(prefix, "_", .x)),
+      by = paste0(prefix, "_concept_id")
+    ) |>
+    dplyr::compute(name = name, temporary = FALSE)
+}
+
+histogramBandExpr <- function(x, name, newName) {
+  caseWhen <- character()
+  for (jj in names(x)) {
+    if (is.infinite(x[[jj]][2])) {
+      caseWhen[jj] <- glue::glue(".data${name} >= {x[[jj]][1]} ~ '{jj}'")
+    } else {
+      caseWhen[jj] <- glue::glue(".data${name} >= {x[[jj]][1]} & .data${name} <= {x[[jj]][2]} ~ '{jj}'")
+    }
+  }
+  glue::glue("dplyr::case_when({paste0(caseWhen, collapse = ', ')}, .default = NA)") |>
+    rlang::parse_exprs() |>
+    rlang::set_names(newName)
 }
