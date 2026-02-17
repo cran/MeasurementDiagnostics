@@ -48,8 +48,8 @@ tableMeasurementValueAsConcept <- function(result,
 
   columnOrder <- c(
     "cdm_name", "cohort_name", "codelist_name", "concept_name", "concept_id",
-    "source_concept_name", "source_concept_id", "domain_id", "sex", "age_group",
-    "year", settingsColumn, "variable_name", "variable_level",
+    "source_concept_name", "source_concept_id", "domain_id", omopgenerics::strataColumns(result),
+    settingsColumn, "variable_name", "variable_level",
     "value_as_concept_id", "estimate_name", "estimate_value"
   )
   # temp fix for visOmpReuslts issue 355
@@ -58,7 +58,7 @@ tableMeasurementValueAsConcept <- function(result,
   factors <- result |>
     dplyr::filter(.data$variable_name == "count") |>
     visOmopResults::splitAll() |>
-    dplyr::select(dplyr::any_of(c("cdm_name", "codelist_name", "concept_name", "variable_level"))) |>
+    dplyr::select(dplyr::any_of(c("cdm_name", "cohort_name", "codelist_name", "concept_name", "variable_level"))) |>
     dplyr::distinct()
 
   if (nrow(factors) == 0) {
@@ -83,7 +83,7 @@ tableMeasurementValueAsConcept <- function(result,
         "Value as concept ID" = "value_as_concept_id"
       ),
       type = type,
-      hide = unique(c(hide, "variable_name")),
+      hide = hide,
       columnOrder = columnOrder,
       factor = factors,
       style = style,

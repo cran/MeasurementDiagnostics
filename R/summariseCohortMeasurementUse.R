@@ -17,11 +17,12 @@
 #'   cohort = cdm$my_cohort, timing = "cohort_start_date"
 #' )
 #'
+#' # Histogram
 #' result <- summariseCohortMeasurementUse(
 #'   codes = list("test_codelist" = c(3001467L, 45875977L)),
 #'   cohort = cdm$my_cohort, timing = "cohort_start_date",
 #'   histogram = list(
-#'     "time" = list(
+#'     "days_between_measurements" = list(
 #'       '0 to 100' = c(0, 100), '110 to 200' = c(110, 200),
 #'       '210 to 300' = c(210, 300), '310 to Inf' = c(310, Inf)
 #'     ),
@@ -33,6 +34,16 @@
 #'       '0 to 5' = c(0, 5), '6 to 10' = c(6, 10), '11 to 15' = c(11, 15),
 #'       '>15' = c(16, Inf)
 #'     )
+#'   )
+#' )
+#'
+#' # Different age groups
+#' result <- summariseCohortMeasurementUse(
+#'   codes = list("test_codelist" = c(3001467L, 45875977L)),
+#'   cohort = cdm$my_cohort,
+#'   ageGroup = list(
+#'     "age_group_1" = list(c(0, 17), c(18, 64), c(65, 150)),
+#'     "age_group_2" = list(c(0, 19), c(20, 39), c(40, 59), c(60, 79), c(80, 99), c(100, 120))
 #'   )
 #' )
 #'
@@ -69,6 +80,7 @@ summariseCohortMeasurementUse <- function(cohort,
     byYear = byYear,
     bySex = bySex,
     ageGroup = ageGroup,
+    personSample = NULL,
     dateRange = dateRange,
     estimates = estimates,
     histogram = histogram,

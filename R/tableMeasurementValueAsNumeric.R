@@ -26,7 +26,7 @@ tableMeasurementValueAsNumber <- function(result,
                                           header = c(visOmopResults::strataColumns(result)),
                                           groupColumn = c("codelist_name"),
                                           settingsColumn = character(),
-                                          hide = c("variable_name", "variable_level"),
+                                          hide = c("variable_level"),
                                           style = NULL,
                                           type = NULL,
                                           .options = list()){
@@ -38,7 +38,8 @@ tableMeasurementValueAsNumber <- function(result,
   # subset to rows of interest
   result <- result |>
     omopgenerics::filterSettings(.data$result_type == "measurement_value_as_number") |>
-    dplyr::filter(!grepl("density", .data$estimate_name))
+    dplyr::filter(!grepl("density", .data$estimate_name)) |>
+    dplyr::filter(!(.data$variable_name %in% c("value_as_number") & .data$estimate_name == "count"))
 
   if (nrow(result) == 0) {
     cli::cli_warn("There are no results with `result_type = measurement_value_as_number`")
@@ -50,7 +51,7 @@ tableMeasurementValueAsNumber <- function(result,
   columnOrder <- c(
     "cdm_name", "cohort_name", "codelist_name", "concept_name", "concept_id",
     "source_concept_name", "source_concept_id", "domain_id",
-    "unit_concept_name", "unit_concept_id", "sex", "age_group", "year",
+    "unit_concept_name", "unit_concept_id", omopgenerics::strataColumns(result),
     settingsColumn, "variable_name", "variable_level", "estimate_name",
     "estimate_value"
   )
@@ -60,7 +61,7 @@ tableMeasurementValueAsNumber <- function(result,
   factors <- result |>
     dplyr::filter(.data$variable_name == "number records") |>
     visOmopResults::splitAll() |>
-    dplyr::select(dplyr::any_of(c("cdm_name", "codelist_name", "concept_name", "unit_concept_name", "estimate_value"))) |>
+    dplyr::select(dplyr::any_of(c("cdm_name", "cohort_name", "codelist_name", "concept_name", "unit_concept_name", "estimate_value"))) |>
     dplyr::mutate(estimate_value = as.numeric(.data$estimate_value)) |>
     dplyr::arrange(dplyr::desc(.data$estimate_value)) |>
     dplyr::select(!"estimate_value")
@@ -72,13 +73,13 @@ tableMeasurementValueAsNumber <- function(result,
   }
 
   result |>
-    dplyr::mutate(variable_name = visOmopResults::customiseText(.data$variable_name)) |>
+    dplyr::mutate(variable_name = visOmopResults::customiseText(.data$variable_name, custom = c("Measurement records" = "number records"))) |>
     visOmopResults::visOmopTable(
       estimateName = c(
         "N" = "<count>",
-        "Median [Q25 - Q75]" = "<median> [<q25> - <q75>]",
-        "Q05 - Q95" = "<q05> - <q95>",
-        "Q01 - Q99" = "<q01> -  <q99>",
+        "Median [Q25 \u2013 Q75]" = "<median> [<q25> \u2013 <q75>]",
+        "Q05 \u2013 Q95" = "<q05> \u2013 <q95>",
+        "Q01 \u2013 Q99" = "<q01> \u2013  <q99>",
         "Range" = "<min> to <max>",
         "Missing value, N (%)" = "<count_missing> (<percentage_missing>%)"
       ),

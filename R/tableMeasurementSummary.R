@@ -24,7 +24,7 @@
 #'}
 tableMeasurementSummary <- function(result,
                                     header = c(visOmopResults::strataColumns(result)),
-                                    groupColumn = c("codelist_name"),
+                                    groupColumn = character(),
                                     settingsColumn = character(),
                                     hide = c("variable_level"),
                                     style = NULL,
@@ -37,7 +37,13 @@ tableMeasurementSummary <- function(result,
 
   # subset to rows of interest
   result <- result |>
-    omopgenerics::filterSettings(.data$result_type == "measurement_summary")
+    dplyr::filter(!.data$estimate_name %in% c("density_x", "density_y")) |>
+    omopgenerics::filterSettings(.data$result_type == "measurement_summary") |>
+    dplyr::filter(!(.data$variable_name %in% c("days_between_measurements", "measurements_per_subject") & .data$estimate_name == "count"))
+
+  if(sum(!is.na(unique(result$variable_level)), na.rm = TRUE) > 0) {
+    hide <- hide[hide != "variable_level"]
+  }
 
   if (nrow(result) == 0) {
     cli::cli_warn("There are no results with `result_type = measurement_summary`")
@@ -46,31 +52,34 @@ tableMeasurementSummary <- function(result,
 
   checkVersion(result)
 
-  columnOrder <- c("cdm_name", "cohort_name", "codelist_name", "sex", "age_group", "year", settingsColumn, "variable_name", "variable_level", "estimate_name", "estimate_value")
+  columnOrder <- c("cdm_name", "cohort_name", "codelist_name", omopgenerics::strataColumns(result), settingsColumn, "variable_name", "variable_level", "estimate_name", "estimate_value")
   # temp fix for visOmpReuslts issue 355
   columnOrder <- columnOrder[columnOrder %in% visOmopResults::tableColumns(result)]
 
   factors <- result |>
-    dplyr::filter(.data$variable_name == "number records") |>
+    dplyr::filter(
+      .data$variable_name %in% c("cohort_records", "number_subjects")
+      ) |>
     visOmopResults::splitAll() |>
-    dplyr::select(dplyr::any_of(c("cdm_name", "codelist_name", "concept_name", "unit_concept_name", "estimate_value"))) |>
+    dplyr::select(dplyr::any_of(c("cdm_name", "cohort_name", "codelist_name", "concept_name", "unit_concept_name", "estimate_value"))) |>
     dplyr::mutate(estimate_value = as.numeric(.data$estimate_value)) |>
-    dplyr::arrange(.data$estimate_value) |>
+    dplyr::arrange(dplyr::desc(.data$estimate_value)) |>
     dplyr::select(!"estimate_value")
 
   if (nrow(factors) == 0) {
     factors <- NULL
   }  else {
     factors <- factors |> as.list() |> purrr::map(\(x){unique(x)})
+    factors$codelist_name <- unique(c("overall", factors$codelist_name))
   }
 
   result |>
-    dplyr::filter(!.data$estimate_name %in% c("density_x", "density_y")) |>
-    dplyr::mutate(variable_name = visOmopResults::customiseText(.data$variable_name, custom = c("Time (days)" = "time"))) |>
+    dplyr::mutate(variable_name = visOmopResults::customiseText(.data$variable_name)) |>
     visOmopResults::visOmopTable(
       estimateName = c(
-        "N" = "<count>",
-        "Median [Q25 - Q75]" = "<median> [<q25> - <q75>]",
+        "N (%)" = "<count> (<percentage>%)",
+        "N" = "<count>" ["cohort_name" %in% omopgenerics::groupColumns(result)],
+        "Median [Q25 \u2013 Q75]" = "<median> [<q25> \u2013 <q75>]",
         "Range" = "<min> to <max>"
       ),
       header = header,

@@ -31,9 +31,8 @@ diagnostics. If NULL it uses the codelist used to create each of the cohorts.}
 
 \item{timing}{Three options: 1) "any" if the interest is on measurement
 recorded any time, 2) "during", if interested in measurements while the
-subject is in the cohort (or in observation if cohort = NULL), and 3)
-"cohort_start_date" for measurements occurring at cohort start date (or at
-"observation_period_start_date if cohort = NULL).}
+subject is in the cohort, and 3) "cohort_start_date" for measurements
+occurring at cohort start date.}
 
 \item{byConcept}{TRUE or FALSE. If TRUE code use will be summarised by concept.}
 
@@ -80,11 +79,12 @@ result <- summariseCohortMeasurementUse(
   cohort = cdm$my_cohort, timing = "cohort_start_date"
 )
 
+# Histogram
 result <- summariseCohortMeasurementUse(
   codes = list("test_codelist" = c(3001467L, 45875977L)),
   cohort = cdm$my_cohort, timing = "cohort_start_date",
   histogram = list(
-    "time" = list(
+    "days_between_measurements" = list(
       '0 to 100' = c(0, 100), '110 to 200' = c(110, 200),
       '210 to 300' = c(210, 300), '310 to Inf' = c(310, Inf)
     ),
@@ -96,6 +96,16 @@ result <- summariseCohortMeasurementUse(
       '0 to 5' = c(0, 5), '6 to 10' = c(6, 10), '11 to 15' = c(11, 15),
       '>15' = c(16, Inf)
     )
+  )
+)
+
+# Different age groups
+result <- summariseCohortMeasurementUse(
+  codes = list("test_codelist" = c(3001467L, 45875977L)),
+  cohort = cdm$my_cohort,
+  ageGroup = list(
+    "age_group_1" = list(c(0, 17), c(18, 64), c(65, 150)),
+    "age_group_2" = list(c(0, 19), c(20, 39), c(40, 59), c(60, 79), c(80, 99), c(100, 120))
   )
 )
 

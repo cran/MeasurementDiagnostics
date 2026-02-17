@@ -25,9 +25,8 @@ test_that("summariseCohortMeasurementUse works", {
       dplyr::pull(estimate_value) |>
       sort(),
     as.character(c(
-      '1', '1', '1', '1', '1', '1', '1', '1093', '11', '1206', '14', '1761', '2',
-      '2', '20', '2316', '3', '3320', '4354', '5026', '651', '9', '96', '96'
-      ))
+      '1', '1', '1', '1', '1', '1', '1', '1093', '1206', '14', '16', '1761', '2', '2', '2316', '24', '24', '29', '3', '3320', '4354', '5026', '56.25', '58.3333333333333', '651', '9', '96', '96'
+    ))
   )
   expect_equal(
     res |>
@@ -35,7 +34,13 @@ test_that("summariseCohortMeasurementUse works", {
       dplyr::filter(strata_name == "overall", estimate_name != "density_x", estimate_name != "density_y") |>
       dplyr::pull(variable_name) |>
       sort(),
-    c(rep("measurements_per_subject", 10), "number records", "number records", "number subjects", "number subjects", rep("time", 10))
+    c(
+      "cohort_records", "cohort_records",
+      "cohort_subjects", "cohort_subjects",
+      rep("days_between_measurements", 10),
+      rep("measurements_per_subject", 10),
+      rep("number_subjects", 4)
+    )
   )
   expect_equal(
     res |>
@@ -43,7 +48,7 @@ test_that("summariseCohortMeasurementUse works", {
       dplyr::filter(strata_name == "overall", estimate_name != "density_x", estimate_name != "density_y") |>
       dplyr::pull(estimate_name) |>
       sort(),
-    c(rep("count", 4), rep("max", 4), rep("median", 4), rep("min", 4), rep("q25", 4), rep("q75", 4))
+    c(rep("count", 6), rep("max", 4), rep("median", 4), rep("min", 4), rep("percentage", 2), rep("q25", 4), rep("q75", 4))
   )
   expect_equal(
     res |>
@@ -118,6 +123,23 @@ test_that("summariseCohortMeasurementUse works", {
       'cohort_1 &&& test &&& Alkaline phosphatase.bone [Enzymatic activity/volume] in Serum or Plasma &&& Alkaline phosphatase.bone &&& NA',
       'cohort_1 &&& test &&& Alkaline phosphatase.bone [Enzymatic activity/volume] in Serum or Plasma &&& Alkaline phosphatase.bone')
   )
+  # "Subjects with measurement" indicating 0 subjects:
+  expect_equal(
+    resAttribute |>
+      omopgenerics::filterGroup(cohort_name == "cohort_2", codelist_name == "test") |>
+      dplyr::pull("estimate_value"),
+    c("0", "0")
+  )
+
+  # > 1 age group ----
+  res <- summariseCohortMeasurementUse(
+    codes = list("test" = 3001467L),
+    cohort = cdm$my_cohort,
+    timing = "any",
+    bySex = TRUE,
+    ageGroup = list(list(c(0, 17), c(18, 64), c(65, 150)), "age_group_named" = list(c(0, 64), c(65, 150)))
+  )
+  expect_equal(omopgenerics::settings(res)$strata |> unique(), "sex &&& age_group_1 &&& age_group_named")
 
   # Histogram ----
   expect_warning(
@@ -128,7 +150,7 @@ test_that("summariseCohortMeasurementUse works", {
       ageGroup = list(c(0, 17), c(18, 64), c(65, 150)),
       histogram = list(
         "blahblah" = list("blah" = c(0, Inf)),
-        "time" = list('0 to 100' = c(0, 100), '110 to 200' = c(110, 200), '210 to 300' = c(210, 300), '310 to Inf' = c(310, Inf)),
+        "days_between_measurements" = list('0 to 100' = c(0, 100), '110 to 200' = c(110, 200), '210 to 300' = c(210, 300), '310 to Inf' = c(310, Inf)),
         "measurements_per_subject" = list('0 to 10' = c(0, 10), '11 to 20' = c(11, 20), '21 to 30' = c(21, 30), '31 to Inf' = c(31, Inf)),
         "value_as_number" =  list('0 to 5' = c(0, 5), '6 to 10' = c(6, 10), '11 to 15' = c(11, 15), '>15' = c(16, Inf))
       )
@@ -137,13 +159,14 @@ test_that("summariseCohortMeasurementUse works", {
 
   expect_true(all(
     res$variable_name |> unique() %in% c(
-      "number records", "number subjects", "time", "measurements_per_subject",
+      "cohort_records", "cohort_subjects", "number_subjects", "days_between_measurements",
+      "measurement_records", "measurements_per_subject", "number records",
       "value_as_number", "value_as_concept_name"
     )
   ))
   expect_equal(
-    res |> dplyr::filter(.data$estimate_name == "count", .data$variable_name %in% c("time", "measurements_per_subject", "value_as_number")) |> dplyr::pull(variable_level) |> unique(),
-    c(NA_character_, "0 to 10", ">15" )
+    res |> dplyr::filter(.data$estimate_name == "count", .data$variable_name %in% c("days_between_measurements", "measurements_per_subject", "value_as_number")) |> dplyr::pull(variable_level) |> unique(),
+    c("0 to 10", ">15" )
   )
 
   dropCreatedTables(cdm = cdm)
@@ -173,9 +196,7 @@ test_that("test timings with eunomia", {
       dplyr::filter(strata_name == "overall", estimate_name != "density_x", estimate_name != "density_y") |>
       dplyr::pull(estimate_value) |>
       sort(),
-    c('1', '1', '1', '1035', '12852', '1487', '15', '2', '2329', '2442', '2656',
-      '3', '3', '31573', '31880', '3493', '38', '39', '4962', '5', '5498', '6',
-      '7481', '9')
+    c('1', '1', '1', '1035', '1487', '15', '17268', '17268', '2', '2329', '2442', '2656', '2686', '2686', '3', '3', '31573', '31880', '3493', '38', '39', '4962', '5', '6', '7481', '86.7088607594937', '9', '98.8830975428146')
   )
   expect_equal(
     res_during |>
@@ -183,9 +204,7 @@ test_that("test timings with eunomia", {
       dplyr::filter(strata_name == "overall", estimate_name != "density_x", estimate_name != "density_y") |>
       dplyr::pull(estimate_value) |>
       sort(),
-    c('1', '1', '1', '1', '1', '1', '1', '1', '1602', '1602', '1602', '1602',
-      '1602', '1602', '1602', '1602', '1602', '1602', '2', '2', '28', '29',
-      '60', '61')
+    c('1', '1', '1', '1', '1', '1', '1', '1', '1.04244229337305', '1602', '1602', '1602', '1602', '1602', '1602', '1602', '1602', '1602', '1602', '17268', '17268', '2', '2', '2.23380491437081', '2686', '2686', '28', '60')
   )
   expect_equal(
     res_start |>
@@ -193,7 +212,7 @@ test_that("test timings with eunomia", {
       dplyr::filter(strata_name == "overall", estimate_name != "density_x", estimate_name != "density_y") |>
       dplyr::pull(estimate_value) |>
       sort(),
-    c('0', '0', '1', '1', '1', '1', '1', '1', '1')
+    c('0', '0', '0.0372300819061802', '1', '1', '1', '1', '1', '1', '17268', '2686')
   )
   expect_equal(
     res_any |>

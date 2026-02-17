@@ -12,6 +12,7 @@ summariseMeasurementUse(
   bySex = FALSE,
   ageGroup = NULL,
   dateRange = as.Date(c(NA, NA)),
+  personSample = 20000,
   estimates = list(measurement_summary = c("min", "q25", "median", "q75", "max",
     "density"), measurement_value_as_number = c("min", "q01", "q05", "q25", "median",
     "q75", "q95", "q99", "max", "count_missing", "percentage_missing", "density"),
@@ -37,6 +38,9 @@ diagnostics.}
 
 \item{dateRange}{Two dates. The first indicating the earliest measurement
 date and the second indicating the latest possible measurement date.}
+
+\item{personSample}{Integerish or `NULL`. Number of persons to sample the
+measurement and observation tables. If `NULL`, no sampling is performed.}
 
 \item{estimates}{A named list indicating, for each measurement diagnostics
 check, which estimates to retrieve. The names of the list should correspond
@@ -88,7 +92,7 @@ resultHistogram <- summariseMeasurementUse(
     "measurement_value_as_concept" = c("count", "percentage")
   ),
   histogram = list(
-    "time" = list(
+    "days_between_measurements" = list(
       '0 to 100' = c(0, 100), '110 to 200' = c(110, 200),
       '210 to 300' = c(210, 300), '310 to Inf' = c(310, Inf)
     ),
@@ -102,6 +106,16 @@ resultHistogram <- summariseMeasurementUse(
     )
   ),
   checks = c("measurement_summary", "measurement_value_as_number", "measurement_value_as_concept")
+)
+
+# more than one age group:
+result <- summariseMeasurementUse(
+  cdm = cdm,
+  codes = list("test_codelist" = c(3001467L, 45875977L)),
+  ageGroup = list(
+    "age_group_1" = list(c(0, 17), c(18, 64), c(65, 150)),
+    "age_group_2" = list(c(0, 19), c(20, 39), c(40, 59), c(60, 79), c(80, 99), c(100, 120))
+  )
 )
 
 CDMConnector::cdmDisconnect(cdm = cdm)
